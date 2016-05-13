@@ -1,0 +1,12 @@
+# The title corpus data file contains the contents of the 
+# "description" field, from both files, with no header.
+csvcut -e iso8859 -c3 -x Abt.csv | tail -n +2 > title_corpus.txt
+csvcut -e iso8859 -c3 -x Buy.csv | tail -n +2 >> title_corpus.txt
+
+# The description corpus data file contains the same data.
+csvcut -e iso8859 -c3 -x Abt.csv | tail -n +2 > description_corpus.txt
+csvcut -e iso8859 -c3 -x Buy.csv | tail -n +2 >> description_corpus.txt
+
+# This approach parrots the model used in the record linkage example:
+#
+# https://github.com/datamade/dedupe-examples/tree/master/record_linkage_example

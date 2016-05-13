@@ -1,3 +1,98 @@
 debug:      True
 testing:    True
 
+datasets:
+    abt-buy:
+        path: "data/abt-buy"
+        fields:
+            - field: "name"
+              type: "String"
+            - field: "name"
+              type: "Text"
+              corpus_file: "name_corpus.txt"
+            - field: "description"
+              type: "Text"
+              has_missing: True
+              corpus_file: "description_corpus.txt"
+            - field: "price"
+              type: "Price"
+              has_missing: True
+        input_files: 
+            - data_file: "Abt.csv"
+              match_id: "idAbt"
+              encoding: "latin-1"
+            - data_file: "Buy.csv"
+              match_id: "idBuy"
+              encoding: "latin-1"
+        match_file: "abt_buy_perfectMapping.csv"
+
+    amazon-googleproducts:
+        path: "data/amazon-googleproducts"
+        fields:
+            - field: "name"
+              type: "String"
+            - field: "name"
+              type: "Text"
+              corpus_file: "name_corpus.txt"
+            - field: "description"
+              type: "Text"
+              corpus_file: "description_corpus.txt"
+              has_missing: True
+            - field: "manufacturer"
+              type: "String"
+              has_missing: True
+            - field: "price"
+              type: "Price"
+        input_files: 
+            - data_file: "Amazon.csv"
+              match_id: "idAmazon" 
+              field_map:
+                  title: "name"
+              encoding: "latin-1"
+            - data_file: "GoogleProducts.csv"
+              match_id: "idGoogleBase"
+              encoding: "latin-1"
+        match_file: "Amzon_GoogleProducts_perfectMapping.csv"
+
+    dblp-acm:
+        path: "data/dblp-acm"
+        fields:
+            - field: "title"
+              type: "String"
+            - field: "authors"
+              type: "String"
+              has_missing: True
+            - field: "venue"
+              type: "String"
+            - field: "year"
+              type: "ShortString"
+        input_files:
+            - data_file: "ACM.csv"
+              match_id: "idACM"
+              encoding: "latin-1"
+            - data_file: "DBLP2.csv"
+              match_id: "idDBLP"
+              encoding: "latin-1"
+        match_file: "DBLP-ACM_perfectMapping.csv"
+
+    dblp-scholar:
+        path: "data/dblp-scholar"
+        fields:
+            - field: "title"
+              type: "String"
+            - field: "authors"
+              type: "String"
+              has_missing: True
+            - field: "venue"
+              type: "String"
+            - field: "year"
+              type: "ShortString"
+        input_files:
+            - data_file: "DBLP1.csv"
+              match_id: "idDBLP"
+              encoding: "latin-1"
+            - data_file: "Scholar.csv"
+              match_id: "idScholar"
+              encoding: "utf-8"
+        match_file: "DBLP-Scholar_perfectMapping.csv"
+

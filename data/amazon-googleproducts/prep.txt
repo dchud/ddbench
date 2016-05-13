@@ -1,0 +1,4 @@
+csvcut -e latin-1 -c2 -x Amazon.csv | tail -n +2 > name_corpus.txt
+csvcut -e latin-1 -c2 -x GoogleProducts.csv | tail -n +2 >> name_corpus.txt
+csvcut -e latin-1 -c3 -x Amazon.csv | tail -n +2 > description_corpus.txt
+csvcut -e latin-1 -c3 -x GoogleProducts.csv | tail -n +2 >> description_corpus.txt
