@@ -1,5 +1,9 @@
-debug:      True
-testing:    True
+debug:       True
+testing:     True
+max_timeout: 3600
+polling_interval: 30
+
+report_dir: "report"
 
 datasets:
     abt-buy:

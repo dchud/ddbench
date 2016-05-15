@@ -1,3 +1,5 @@
 confire
 dedupe
+redis
+rq
 unidecode

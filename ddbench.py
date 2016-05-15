@@ -3,28 +3,31 @@
 import argparse
 from collections import defaultdict
 import csv
+import hashlib
+import json
 import logging
 from random import random
 import re
+import time
 
+from redis import Redis
+from rq import Queue
 from unidecode import unidecode
 
 import dedupe
 
 from config import settings
+from queue_tasks import run_ddbench
 
 
-parser = argparse.ArgumentParser('ddbench - dedupe benchmarking tool')
-parser.add_argument('-c', '--count', dest='count',
-                    default=50, type=int,
-                    help='number of uncertain pairs to auto-label')
-parser.add_argument('-d', '--dataset', dest='dataset',
-                    help='name of dataset to benchmark against (see data/)')
-parser.add_argument('-r', '--reliability', dest='reliability',
-                    default=1.0, type=float,
-                    help='Reviewer "reliability" (0.0-1.0, default 1.0)')
-parser.add_argument('-v', '--verbose', dest='verbose', default=False,
-                    action='store_true')
+def time_hash(digits=6):
+    """Generate an arbitrary hash based on the current time for filenames."""
+    hash = hashlib.sha1()
+    hash.update(str(time.time()).encode())
+    t = time.localtime()
+    dt = '%s%02d%02d%02d%02d' % (t.tm_year, t.tm_mon, t.tm_mday,
+                                 t.tm_hour, t.tm_min)
+    return '%s-%s' % (dt, hash.hexdigest()[:digits])
 
 
 def pre_process(v):
@@ -107,19 +110,8 @@ def auto_label(deduper, m1, m2, reliability, count=100):
         deduper.markPairs(labels)
 
 
-if __name__ == '__main__':
-    args = parser.parse_args()
-    if args.verbose or settings.get('DEBUG'):
-        logging.getLogger().setLevel(logging.DEBUG)
-
-    if args.reliability < 0.0 and args.reliability > 1.0:
-        parser.error('Reliability must be within [0.0, 1.0]')
-
-    datasets = settings.get('datasets', {})
-    try:
-        dataset = datasets[args.dataset]
-    except KeyError:
-        parser.error('Please specify a --dataset from those provided in data/')
+def run_dedupe(args, dataset):
+    """Complete a single run of dedupe on the specified dataset."""
 
     # read in the datasets, assuming two for record linkage
     input_files = dataset['input_files']
@@ -209,7 +201,80 @@ if __name__ == '__main__':
             incorrect_count += 1
             logging.debug('INCORRECT')
 
-    logging.debug('match_count: %s' % match_count)
-    logging.debug('linked_records_count: %s' % linked_records_count)
-    logging.debug('correct_count: %s' % correct_count)
-    logging.debug('incorrect_count: %s' % incorrect_count)
+    report = {
+            'match_count': match_count,
+            'linked_records_count': linked_records_count,
+            'correct_count': correct_count,
+            'incorrect_count': incorrect_count
+        }
+
+    # Generate a distinct filename for report, allowing for grouping
+    report_path = '%s/%s-%s-%03d.json' % (settings.get('report_dir'),
+                                          args.report_prefix, args.dataset,
+                                          args.job_id)
+
+    with open(report_path, 'w') as fp_report:
+        json.dump(report, fp_report, indent=2)
+    logging.info('Wrote report to %s' % report_path)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser('ddbench - dedupe benchmarking tool')
+    parser.add_argument('-c', '--count', dest='count',
+                        default=50, type=int,
+                        help='number of uncertain pairs to auto-label')
+    parser.add_argument('-d', '--dataset', dest='dataset', default=None,
+                        help='name of dataset to dedupe (see data/)')
+    parser.add_argument('-j', '--job-id', dest='job_id',
+                        default=1, type=int,
+                        help='id for this benchmark run within larger set')
+    parser.add_argument('-n', '--num_runs', dest='num_runs',
+                        default=1, type=int,
+                        help='number of repeat runs to perform')
+    parser.add_argument('-p', '--report-prefix', dest='report_prefix',
+                        default=time_hash(),
+                        help='directory path to report output')
+    parser.add_argument('-r', '--reliability', dest='reliability',
+                        default=1.0, type=float,
+                        help='Reviewer "reliability" (0.0-1.0, default 1.0)')
+    parser.add_argument('-v', '--verbose', dest='verbose', default=False,
+                        action='store_true')
+
+    args = parser.parse_args()
+    if args.verbose or settings.get('DEBUG'):
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if args.reliability < 0.0 and args.reliability > 1.0:
+        parser.error('Reliability must be within [0.0, 1.0]')
+
+    datasets = settings.get('datasets', {})
+    try:
+        dataset = datasets[args.dataset]
+    except KeyError:
+        parser.error('Please specify a --dataset from those provided in data/')
+
+    # A single run can come from a command line or queued invocation
+    if args.num_runs == 1:
+        run_dedupe(args, dataset)
+    elif args.num_runs > 1:
+        redis_conn = Redis()
+        q = Queue(connection=redis_conn)
+        # Start the job ids at 1 for clarity
+        for i in range(1, args.num_runs + 1):
+            # in queued mode, report_prefix and job_id are required
+            subprocess_args = [args.dataset, args.count, args.report_prefix,
+                               i, args.reliability,
+                               args.verbose or settings.get('debug')]
+            # Large dedupe jobs can take >30min so set a sufficient timeout
+            q.enqueue(run_ddbench, args=subprocess_args,
+                      timeout=settings.get('max_timeout', 60 * 60))
+            logging.debug('Queued job # %s' % i)
+        queue_length = len(q)
+        while queue_length > 0:
+            logging.debug('%s of %s jobs remain on the queue' % (queue_length,
+                          args.num_runs))
+            time.sleep(settings.get('polling_interval', 30))
+            queue_length = len(q)
+        logging.debug('Queue is empty; all jobs are active or complete.')
+        logging.debug('Reports are in %s/ with prefix %s' % (
+                      settings.get('report_dir'), args.report_prefix))
